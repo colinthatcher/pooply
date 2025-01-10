@@ -10,10 +10,8 @@ ENV GO111MODULE=on \
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy go.mod and go.sum files
+# Copy go.mod and go.sum files & download dependencies
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
 # Copy the source code
@@ -23,21 +21,13 @@ COPY . .
 RUN go build -o main .
 
 # Use a minimal image for the runtime
-FROM debian:bullseye-slim
-
-# Install required packages
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+FROM gcr.io/distroless/static-debian12
 
 # Set working directory
 WORKDIR /app
 
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/main .
-
-# Expose application port
-EXPOSE 8080
 
 # Command to run the application
 CMD ["./main"]
