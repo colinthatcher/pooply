@@ -63,7 +63,7 @@ func handleEcho(s *discordgo.Session, i *discordgo.InteractionCreate, opts optio
 
 func handleInsert(s *discordgo.Session, i *discordgo.InteractionCreate, opts optionMap, ctx context.Context, db *bun.DB) error {
 	author := interactionAuthor(i.Interaction).String()
-	input := opts["message"].StringValue()
+	input := opts["input"].StringValue()
 
 	dataToInsert := []Message{
 		{Author: author, Input: input},
