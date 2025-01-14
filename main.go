@@ -1,14 +1,27 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"flag"
 	"log"
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
+	"github.com/uptrace/bun/driver/pgdriver"
 )
+
+type Message struct {
+	ID        int64     `bun:",pk,autoincrement"` // primary key, auto-increment
+	Author    string    `bun:"author,notnull"`
+	Input     string    `bun:"input,notnull"`
+	CreatedAt time.Time `bun:"created_at,nullzero,default:CURRENT_TIMESTAMP"`
+}
 
 type optionMap = map[string]*discordgo.ApplicationCommandInteractionDataOption
 
@@ -48,6 +61,40 @@ func handleEcho(s *discordgo.Session, i *discordgo.InteractionCreate, opts optio
 	log.Println("Successfully sent echo message.")
 }
 
+func handleInsert(s *discordgo.Session, i *discordgo.InteractionCreate, opts optionMap, ctx context.Context, db *bun.DB) error {
+	author := interactionAuthor(i.Interaction).String()
+	input := opts["input"].StringValue()
+
+	dataToInsert := []Message{
+		{Author: author, Input: input},
+	}
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "Added to the database!",
+		},
+	})
+
+	if err != nil {
+		log.Panicf("could not respond to interaction: %s", err)
+	}
+	log.Println("Successfully sent input message.")
+
+	_, dbErr := db.NewInsert().
+		Model(&dataToInsert).
+		Exec(ctx)
+	return dbErr
+}
+
+func setupSchema(ctx context.Context, db *bun.DB) error {
+	_, err := db.NewCreateTable().
+		Model((*Message)(nil)).
+		IfNotExists().
+		Exec(ctx)
+	return err
+}
+
 var commands = []*discordgo.ApplicationCommand{
 	{
 		Name:        "echo",
@@ -66,6 +113,18 @@ var commands = []*discordgo.ApplicationCommand{
 			},
 		},
 	},
+	{
+		Name:        "insert",
+		Description: "Add information to the database",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Name:        "input",
+				Description: "Contents of the information to add",
+				Type:        discordgo.ApplicationCommandOptionString,
+				Required:    true,
+			},
+		},
+	},
 }
 
 var (
@@ -75,6 +134,26 @@ var (
 )
 
 func main() {
+	dsn := "postgres://postgres:mathilenjoyer@localhost:5432/app_db?sslmode=disable"
+
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+	ctx := context.Background()
+
+	db := bun.NewDB(sqldb, pgdialect.New())
+
+	defer db.Close()
+
+	// Check the connection
+	if err := db.Ping(); err != nil {
+		log.Fatalf("failed to connect to PostgreSQL: %v", err)
+	}
+
+	if err := setupSchema(context.Background(), db); err != nil {
+		log.Fatalf("failed to setup schema: %v", err)
+	}
+
+	log.Println("Connected to PostgreSQL successfully!")
+
 	flag.Parse()
 	if *App == "" {
 		log.Fatal("application id is not set")
@@ -88,11 +167,18 @@ func main() {
 		}
 
 		data := i.ApplicationCommandData()
-		if data.Name != "echo" {
+		if data.Name != "echo" && data.Name != "insert" {
 			return
 		}
 
-		handleEcho(s, i, parseOptions(data.Options))
+		if data.Name == "echo" {
+			handleEcho(s, i, parseOptions(data.Options))
+		}
+
+		if data.Name == "insert" {
+			handleInsert(s, i, parseOptions(data.Options), ctx, db)
+		}
+
 	})
 
 	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
