@@ -11,8 +11,10 @@ Pooply is a golang application running in a docker image. When testing locally y
 When running locally you should be able to do something similar to:
 
 ```shell
+docker compose up -d postgres_db adminer
 goose postgres "postgres://username:password@localhost:5432/pooply?sslmode=disable" -dir migrations up
-go run . -app <app_id> -token <token>
+docker compose build app
+docker compose run app
 ```
 
 ## Tools
