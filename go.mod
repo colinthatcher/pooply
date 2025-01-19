@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/uptrace/bun v1.2.8
 	github.com/uptrace/bun/dialect/pgdialect v1.2.8
